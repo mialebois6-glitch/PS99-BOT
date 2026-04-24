@@ -24,6 +24,7 @@ const DEFAULT_CLAN = "VOTS";
 // UTILS
 // =======================
 function formatNumber(num) {
+    if (!num) return "0";
     if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + "M";
     if (num >= 1_000) return (num / 1_000).toFixed(1) + "K";
     return num.toString();
@@ -33,20 +34,26 @@ function formatNumber(num) {
 // ROBLOX USERNAMES
 // =======================
 async function getUsernames(userIds) {
-    const res = await fetch("https://users.roblox.com/v1/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userIds })
-    });
+    if (!userIds.length) return {};
 
-    const data = await res.json();
+    try {
+        const res = await fetch("https://users.roblox.com/v1/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userIds })
+        });
 
-    const map = {};
-    data.data.forEach(u => {
-        map[u.id] = u.name;
-    });
+        const data = await res.json();
 
-    return map;
+        const map = {};
+        (data.data || []).forEach(u => {
+            map[u.id] = u.name;
+        });
+
+        return map;
+    } catch {
+        return {};
+    }
 }
 
 // =======================
@@ -56,22 +63,34 @@ async function buildClanEmbed(clan, page = 1) {
     const perPage = 10;
     const eventName = "Spring2026";
 
-    const members = clan?.Contribution?.Battle || [];
+    // 🔥 DATA SAFE
+    const members =
+        clan?.Contribution?.Battle ||
+        clan?.Battle ||
+        clan?.battle ||
+        [];
 
-    const sorted = [...members].sort((a, b) => b.Points - a.Points);
+    const clanPoints =
+        clan?.Points ||
+        clan?.points ||
+        clan?.BattlePoints ||
+        clan?.battlePoints ||
+        0;
+
+    const sorted = [...members].sort((a, b) => (b.Points || 0) - (a.Points || 0));
 
     const start = (page - 1) * perPage;
     const current = sorted.slice(start, start + perPage);
 
     const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
 
-    // 🔥 récupérer usernames
-    const ids = current.map(p => p.UserID);
+    // 🔥 usernames
+    const ids = current.map(p => p.UserID).filter(Boolean);
     const usernames = await getUsernames(ids);
 
     const list = current.map((p, i) => {
         const rank = start + i + 1;
-        const username = usernames[p.UserID] || "Unknown";
+        const username = usernames[p.UserID] || `User ${p.UserID}`;
         const points = p.Points || 0;
 
         return `#${rank} **${username}** — ${formatNumber(points)}⭐`;
@@ -84,14 +103,14 @@ async function buildClanEmbed(clan, page = 1) {
 `*Guys under 1m point add lynox10 on dc or kick*
 
 👥 **Members**      🏆 **Place**      🤝 **Contributors**
-${clan.Members?.length || 0} / 75        #${clan.Rank || "??"}        ${members.length} / ${clan.Members?.length || 0}
+${clan?.Members?.length || 0} / 75        #${clan?.Rank || "??"}        ${members.length} / ${clan?.Members?.length || 0}
 
 ⚔️ **${eventName} Points**
-${clan.Points?.toLocaleString()}⭐
+${Number(clanPoints).toLocaleString()}⭐
 
 📊 **Contributors — ${eventName} • Page ${page}/${totalPages}**
 
-${list}`
+${list || "Aucun contributeur"}`
         )
         .setFooter({ text: "Pet Simulator 99 • biggamesapi.io" });
 }
@@ -146,42 +165,9 @@ client.on("messageCreate", async (message) => {
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const cmd = args.shift().toLowerCase();
 
-    // 🔎 SEARCH
-    if (cmd === "search") {
-        const username = args[0];
-        if (!username) return message.reply("❌ pseudo manquant");
-
-        try {
-            const userId = await getUserId(username);
-            const clan = await getClan(DEFAULT_CLAN);
-
-            if (!clan) return message.reply("❌ clan introuvable");
-
-            const members = clan?.Contribution?.Battle || [];
-            const player = members.find(p => p.UserID == userId);
-
-            if (!player) return message.reply("❌ pas dans le clan");
-
-            const sorted = [...members].sort((a, b) => b.Points - a.Points);
-            const rank = sorted.findIndex(p => p.UserID == userId) + 1;
-
-            const embed = new EmbedBuilder()
-                .setTitle(`🔎 ${username}`)
-                .addFields(
-                    { name: "👑 Clan", value: DEFAULT_CLAN, inline: true },
-                    { name: "🏆 Rank", value: `#${rank}`, inline: true },
-                    { name: "🌸 Points", value: String(player.Points), inline: false }
-                );
-
-            message.reply({ embeds: [embed] });
-
-        } catch (err) {
-            console.error(err);
-            message.reply("❌ erreur search");
-        }
-    }
-
-    // 👑 CLAN
+    // ========================
+    // CLAN
+    // ========================
     if (cmd === "clan") {
         const clan = await getClan(DEFAULT_CLAN);
         if (!clan) return message.reply("❌ clan introuvable");
@@ -216,7 +202,9 @@ client.on("messageCreate", async (message) => {
             if (interaction.customId === "prev") page--;
             if (interaction.customId === "next") page++;
 
-            const maxPage = Math.ceil((clan?.Contribution?.Battle?.length || 10) / 10);
+            const maxPage = Math.max(1, Math.ceil(
+                (clan?.Contribution?.Battle?.length || 1) / 10
+            ));
 
             if (page < 1) page = 1;
             if (page > maxPage) page = maxPage;
@@ -226,7 +214,9 @@ client.on("messageCreate", async (message) => {
         });
     }
 
-    // 🐶 PET
+    // ========================
+    // PET
+    // ========================
     if (cmd === "searchpet") {
         const name = args.join(" ");
         if (!name) return message.reply("❌ nom pet");
