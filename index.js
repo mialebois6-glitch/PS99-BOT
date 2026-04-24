@@ -29,8 +29,12 @@ function formatNumber(num) {
     return num.toString();
 }
 
+// =======================
+// EMBED CLAN
+// =======================
 function buildClanEmbed(clan, page = 1) {
     const perPage = 10;
+    const eventName = "Spring2026";
 
     const members = clan?.Contribution?.Battle || [];
     const sorted = [...members].sort((a, b) => b.Points - a.Points);
@@ -38,36 +42,26 @@ function buildClanEmbed(clan, page = 1) {
     const start = (page - 1) * perPage;
     const current = sorted.slice(start, start + perPage);
 
+    const totalPages = Math.ceil(sorted.length / perPage);
+
     const list = current.map((p, i) => {
         const rank = start + i + 1;
-
-        let medal = "";
-        if (rank === 1) medal = "🥇";
-        else if (rank === 2) medal = "🥈";
-        else if (rank === 3) medal = "🥉";
-
-        return `${medal} #${rank} **${p.Username || "Unknown"}** — ${formatNumber(p.Points)} ⭐`;
+        return `#${rank} **${p.Username || "Unknown"}** — ${formatNumber(p.Points)}⭐`;
     }).join("\n");
 
     return new EmbedBuilder()
-        .setColor("#5865F2")
+        .setColor("#2b2d31")
         .setTitle(`🇫🇷 ${DEFAULT_CLAN}`)
         .setDescription(
 `*Guys under 1m point add lynox10 on dc or kick*
 
-👥 **Members**  
-${clan.Members?.length || 0} / 75
+👥 **Members**      🏆 **Place**      🤝 **Contributors**
+${clan.Members?.length || 0} / 75        #${clan.Rank || "??"}        ${members.length} / ${clan.Members?.length || 0}
 
-🏆 **Place**  
-#${clan.Rank || "??"}
+⚔️ **${eventName} Points**
+${clan.Points?.toLocaleString()}⭐
 
-🤝 **Contributors**  
-${members.length} / ${clan.Members?.length || 0}
-
-⚔️ **Spring2026 Points**  
-${clan.Points?.toLocaleString()} ⭐
-
-📊 **Contributors — Spring2026 • Page ${page}/${Math.ceil(sorted.length / perPage)}**
+📊 **Contributors — ${eventName} • Page ${page}/${totalPages}**
 
 ${list}`
         )
@@ -124,9 +118,7 @@ client.on("messageCreate", async (message) => {
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const cmd = args.shift().toLowerCase();
 
-    // ========================
-    // 🔎 SEARCH (inchangé)
-    // ========================
+    // 🔎 SEARCH
     if (cmd === "search") {
         const username = args[0];
         if (!username) return message.reply("❌ pseudo manquant");
@@ -161,9 +153,7 @@ client.on("messageCreate", async (message) => {
         }
     }
 
-    // ========================
-    // 👑 CLAN (NOUVEAU STYLE)
-    // ========================
+    // 👑 CLAN (STYLE SCREEN)
     if (cmd === "clan") {
         const clan = await getClan(DEFAULT_CLAN);
         if (!clan) return message.reply("❌ clan introuvable");
@@ -207,9 +197,7 @@ client.on("messageCreate", async (message) => {
         });
     }
 
-    // ========================
     // 🐶 PET
-    // ========================
     if (cmd === "searchpet") {
         const name = args.join(" ");
         if (!name) return message.reply("❌ nom pet");
