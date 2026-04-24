@@ -30,23 +30,32 @@ function formatNumber(num) {
 }
 
 // =======================
-// EMBED CLAN
+// EMBED CLAN (FIX)
 // =======================
 function buildClanEmbed(clan, page = 1) {
     const perPage = 10;
     const eventName = "Spring2026";
 
-    const members = clan?.Contribution?.Battle || [];
-    const sorted = [...members].sort((a, b) => b.Points - a.Points);
+    // 🔥 FIX DATA ROBUSTE
+    const members = clan?.Contribution?.Battle 
+        || clan?.Members 
+        || clan?.members 
+        || [];
+
+    const sorted = [...members].sort((a, b) => (b.Points || b.points || 0) - (a.Points || a.points || 0));
 
     const start = (page - 1) * perPage;
     const current = sorted.slice(start, start + perPage);
 
-    const totalPages = Math.ceil(sorted.length / perPage);
+    const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
 
     const list = current.map((p, i) => {
         const rank = start + i + 1;
-        return `#${rank} **${p.Username || "Unknown"}** — ${formatNumber(p.Points)}⭐`;
+
+        const username = p.Username || p.username || p.Name || "Unknown";
+        const points = p.Points || p.points || 0;
+
+        return `#${rank} **${username}** — ${formatNumber(points)}⭐`;
     }).join("\n");
 
     return new EmbedBuilder()
@@ -56,14 +65,14 @@ function buildClanEmbed(clan, page = 1) {
 `*Guys under 1m point add lynox10 on dc or kick*
 
 👥 **Members**      🏆 **Place**      🤝 **Contributors**
-${clan.Members?.length || 0} / 75        #${clan.Rank || "??"}        ${members.length} / ${clan.Members?.length || 0}
+${clan.Members?.length || clan.members?.length || 0} / 75        #${clan.Rank || clan.rank || "??"}        ${members.length} / ${clan.Members?.length || clan.members?.length || 0}
 
 ⚔️ **${eventName} Points**
-${clan.Points?.toLocaleString()}⭐
+${clan.Points?.toLocaleString() || clan.points || 0}⭐
 
 📊 **Contributors — ${eventName} • Page ${page}/${totalPages}**
 
-${list}`
+${list || "Aucun contributeur trouvé"}`
         )
         .setFooter({ text: "Pet Simulator 99 • biggamesapi.io" });
 }
@@ -153,13 +162,12 @@ client.on("messageCreate", async (message) => {
         }
     }
 
-    // 👑 CLAN (STYLE SCREEN)
+    // 👑 CLAN
     if (cmd === "clan") {
         const clan = await getClan(DEFAULT_CLAN);
         if (!clan) return message.reply("❌ clan introuvable");
 
         let page = 1;
-        const maxPage = Math.ceil((clan.Contribution?.Battle?.length || 1) / 10);
 
         const embed = buildClanEmbed(clan, page);
 
@@ -188,6 +196,8 @@ client.on("messageCreate", async (message) => {
 
             if (interaction.customId === "prev") page--;
             if (interaction.customId === "next") page++;
+
+            const maxPage = Math.ceil((clan?.Contribution?.Battle?.length || 10) / 10);
 
             if (page < 1) page = 1;
             if (page > maxPage) page = maxPage;
