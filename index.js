@@ -30,30 +30,49 @@ function formatNumber(num) {
 }
 
 // =======================
-// EMBED CLAN (FIX)
+// ROBLOX USERNAMES
 // =======================
-function buildClanEmbed(clan, page = 1) {
+async function getUsernames(userIds) {
+    const res = await fetch("https://users.roblox.com/v1/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userIds })
+    });
+
+    const data = await res.json();
+
+    const map = {};
+    data.data.forEach(u => {
+        map[u.id] = u.name;
+    });
+
+    return map;
+}
+
+// =======================
+// EMBED CLAN
+// =======================
+async function buildClanEmbed(clan, page = 1) {
     const perPage = 10;
     const eventName = "Spring2026";
 
-    // 🔥 FIX DATA ROBUSTE
-    const members = clan?.Contribution?.Battle 
-        || clan?.Members 
-        || clan?.members 
-        || [];
+    const members = clan?.Contribution?.Battle || [];
 
-    const sorted = [...members].sort((a, b) => (b.Points || b.points || 0) - (a.Points || a.points || 0));
+    const sorted = [...members].sort((a, b) => b.Points - a.Points);
 
     const start = (page - 1) * perPage;
     const current = sorted.slice(start, start + perPage);
 
     const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
 
+    // 🔥 récupérer usernames
+    const ids = current.map(p => p.UserID);
+    const usernames = await getUsernames(ids);
+
     const list = current.map((p, i) => {
         const rank = start + i + 1;
-
-        const username = p.Username || p.username || p.Name || "Unknown";
-        const points = p.Points || p.points || 0;
+        const username = usernames[p.UserID] || "Unknown";
+        const points = p.Points || 0;
 
         return `#${rank} **${username}** — ${formatNumber(points)}⭐`;
     }).join("\n");
@@ -65,14 +84,14 @@ function buildClanEmbed(clan, page = 1) {
 `*Guys under 1m point add lynox10 on dc or kick*
 
 👥 **Members**      🏆 **Place**      🤝 **Contributors**
-${clan.Members?.length || clan.members?.length || 0} / 75        #${clan.Rank || clan.rank || "??"}        ${members.length} / ${clan.Members?.length || clan.members?.length || 0}
+${clan.Members?.length || 0} / 75        #${clan.Rank || "??"}        ${members.length} / ${clan.Members?.length || 0}
 
 ⚔️ **${eventName} Points**
-${clan.Points?.toLocaleString() || clan.points || 0}⭐
+${clan.Points?.toLocaleString()}⭐
 
 📊 **Contributors — ${eventName} • Page ${page}/${totalPages}**
 
-${list || "Aucun contributeur trouvé"}`
+${list}`
         )
         .setFooter({ text: "Pet Simulator 99 • biggamesapi.io" });
 }
@@ -169,7 +188,7 @@ client.on("messageCreate", async (message) => {
 
         let page = 1;
 
-        const embed = buildClanEmbed(clan, page);
+        const embed = await buildClanEmbed(clan, page);
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -202,7 +221,7 @@ client.on("messageCreate", async (message) => {
             if (page < 1) page = 1;
             if (page > maxPage) page = maxPage;
 
-            const newEmbed = buildClanEmbed(clan, page);
+            const newEmbed = await buildClanEmbed(clan, page);
             await interaction.update({ embeds: [newEmbed] });
         });
     }
