@@ -1,6 +1,13 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
+} = require('discord.js');
 
-const fetch = global.fetch; // ✅ fetch intégré Node 18+
+const fetch = global.fetch;
 
 const client = new Client({
     intents: [
@@ -13,7 +20,63 @@ const client = new Client({
 const PREFIX = "!";
 const DEFAULT_CLAN = "VOTS";
 
-// 🔹 USERNAME → USERID
+// =======================
+// UTILS
+// =======================
+function formatNumber(num) {
+    if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + "M";
+    if (num >= 1_000) return (num / 1_000).toFixed(1) + "K";
+    return num.toString();
+}
+
+function buildClanEmbed(clan, page = 1) {
+    const perPage = 10;
+
+    const members = clan?.Contribution?.Battle || [];
+    const sorted = [...members].sort((a, b) => b.Points - a.Points);
+
+    const start = (page - 1) * perPage;
+    const current = sorted.slice(start, start + perPage);
+
+    const list = current.map((p, i) => {
+        const rank = start + i + 1;
+
+        let medal = "";
+        if (rank === 1) medal = "🥇";
+        else if (rank === 2) medal = "🥈";
+        else if (rank === 3) medal = "🥉";
+
+        return `${medal} #${rank} **${p.Username || "Unknown"}** — ${formatNumber(p.Points)} ⭐`;
+    }).join("\n");
+
+    return new EmbedBuilder()
+        .setColor("#5865F2")
+        .setTitle(`🇫🇷 ${DEFAULT_CLAN}`)
+        .setDescription(
+`*Guys under 1m point add lynox10 on dc or kick*
+
+👥 **Members**  
+${clan.Members?.length || 0} / 75
+
+🏆 **Place**  
+#${clan.Rank || "??"}
+
+🤝 **Contributors**  
+${members.length} / ${clan.Members?.length || 0}
+
+⚔️ **Spring2026 Points**  
+${clan.Points?.toLocaleString()} ⭐
+
+📊 **Contributors — Spring2026 • Page ${page}/${Math.ceil(sorted.length / perPage)}**
+
+${list}`
+        )
+        .setFooter({ text: "Pet Simulator 99 • biggamesapi.io" });
+}
+
+// =======================
+// API
+// =======================
 async function getUserId(username) {
     const res = await fetch("https://users.roblox.com/v1/usernames/users", {
         method: "POST",
@@ -28,14 +91,12 @@ async function getUserId(username) {
     return data?.data?.[0]?.id;
 }
 
-// 🔹 CLAN
 async function getClan(clanName) {
     const res = await fetch(`https://ps99.biggamesapi.io/api/clan/${clanName}`);
     const data = await res.json();
     return data?.data;
 }
 
-// 🔹 PET SAFE SEARCH
 async function getPet(name) {
     const res = await fetch(`https://ps99.biggamesapi.io/api/rap`);
     const data = await res.json();
@@ -47,16 +108,25 @@ async function getPet(name) {
     );
 }
 
+// =======================
+// READY
+// =======================
 client.on("ready", () => {
     console.log("✅ Bot prêt");
 });
 
+// =======================
+// COMMANDES
+// =======================
 client.on("messageCreate", async (message) => {
     if (!message.content.startsWith(PREFIX) || message.author.bot) return;
 
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const cmd = args.shift().toLowerCase();
 
+    // ========================
+    // 🔎 SEARCH (inchangé)
+    // ========================
     if (cmd === "search") {
         const username = args[0];
         if (!username) return message.reply("❌ pseudo manquant");
@@ -91,44 +161,55 @@ client.on("messageCreate", async (message) => {
         }
     }
 
+    // ========================
+    // 👑 CLAN (NOUVEAU STYLE)
+    // ========================
     if (cmd === "clan") {
         const clan = await getClan(DEFAULT_CLAN);
         if (!clan) return message.reply("❌ clan introuvable");
 
-        const embed = new EmbedBuilder()
-            .setTitle(`👑 Clan ${DEFAULT_CLAN}`)
-            .addFields(
-                { name: "👥 Membres", value: String(clan.Members?.length || 0), inline: true },
-                { name: "🏆 Points", value: String(clan.Points || 0), inline: true }
-            );
+        let page = 1;
+        const maxPage = Math.ceil((clan.Contribution?.Battle?.length || 1) / 10);
 
-        message.reply({ embeds: [embed] });
+        const embed = buildClanEmbed(clan, page);
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("prev")
+                .setLabel("⬅️ Prev")
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId("next")
+                .setLabel("➡️ Next")
+                .setStyle(ButtonStyle.Primary)
+        );
+
+        const msg = await message.reply({
+            embeds: [embed],
+            components: [row]
+        });
+
+        const collector = msg.createMessageComponentCollector({ time: 60000 });
+
+        collector.on("collect", async (interaction) => {
+            if (interaction.user.id !== message.author.id) {
+                return interaction.reply({ content: "❌ Pas ton menu", ephemeral: true });
+            }
+
+            if (interaction.customId === "prev") page--;
+            if (interaction.customId === "next") page++;
+
+            if (page < 1) page = 1;
+            if (page > maxPage) page = maxPage;
+
+            const newEmbed = buildClanEmbed(clan, page);
+            await interaction.update({ embeds: [newEmbed] });
+        });
     }
 
-    if (cmd === "clansearch") {
-        const clanName = args[0];
-        if (!clanName) return message.reply("❌ nom clan");
-
-        const clan = await getClan(clanName);
-        if (!clan) return message.reply("❌ clan introuvable");
-
-        const embed = new EmbedBuilder()
-            .setTitle(`🔍 Clan ${clanName}`)
-            .addFields(
-                { name: "👥 Membres", value: String(clan.Members?.length || 0), inline: true },
-                { name: "🏆 Points", value: String(clan.Points || 0), inline: true }
-            );
-
-        message.reply({ embeds: [embed] });
-    }
-
-    if (cmd === "searchrap") {
-        const username = args[0];
-        if (!username) return message.reply("❌ pseudo");
-
-        message.reply(`💰 RAP de ${username} : API pas dispo`);
-    }
-
+    // ========================
+    // 🐶 PET
+    // ========================
     if (cmd === "searchpet") {
         const name = args.join(" ");
         if (!name) return message.reply("❌ nom pet");
@@ -147,5 +228,4 @@ client.on("messageCreate", async (message) => {
     }
 });
 
-// ✅ Token via Railway ENV
 client.login(process.env.TOKEN);
